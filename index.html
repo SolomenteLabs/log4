@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Mint Soulbound Token</title>
+    <style>
+      body {
+        background-color: #111;
+        color: #0f0;
+        font-family: monospace;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: start;
+        height: 100vh;
+        margin: 0;
+        padding-top: 3rem;
+      }
+      h1 {
+        font-size: 1.75rem;
+        color: #0f0;
+        margin-bottom: 0.5rem;
+      }
+      button {
+        background-color: #0f0;
+        color: black;
+        font-weight: bold;
+        font-size: 1rem;
+        padding: 0.75rem 1.5rem;
+        border: none;
+        border-radius: 0.5rem;
+        cursor: pointer;
+        margin-bottom: 1rem;
+      }
+      #terminal {
+        background-color: black;
+        color: #0f0;
+        border: 1px solid #0f0;
+        padding: 1rem;
+        width: 60%;
+        height: 300px;
+        overflow-y: auto;
+        white-space: pre-wrap;
+      }
+      .title {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        margin-bottom: 1rem;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="title">
+      <span>🚀</span>
+      <h1>Mint Soulbound Token <span style="color: #0f0;">(Live Log)</span></h1>
+    </div>
+    <button id="mintBtn">Mint Smart Token</button>
+    <div id="terminal"></div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
