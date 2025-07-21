@@ -1,110 +1,104 @@
 import { useEffect, useState } from "react";
-import {
-  ChainProvider,
-  useChain,
-} from "@cosmos-kit/react";
-import { chains, assets } from "chain-registry";
-import { SigningStargateClient, AminoTypes, Registry } from "@cosmjs/stargate";
-import { MsgIssue } from "coreum-js/asset/ft/v1/tx";
+import { chains } from "chain-registry";
+import { useChain } from "@cosmos-kit/react";
+import { SigningStargateClient, GasPrice } from "@cosmjs/stargate";
 
-const appendLog = (msg: string) => {
-  const el = document.getElementById("log");
-  if (el) {
-    el.innerHTML += `<div>> ${msg}</div>`;
-    el.scrollTop = el.scrollHeight;
-  }
+const COREUM = chains.find((chain) => chain.chain_name === "coreum-testnet");
+
+const MINT_MSG = {
+  typeUrl: "/coreum.asset.ft.v1.MsgIssue",
+  value: {
+    issuer: "", // will be set dynamically
+    symbol: "LOGTOKEN",
+    subunit: "logtoken",
+    precision: 6,
+    initial_amount: "1",
+    description: "Demo log token",
+    features: ["burning", "minting", "freezing"],
+  },
 };
 
 export default function App() {
-  const [client, setClient] = useState<SigningStargateClient | null>(null);
-  const [walletAddress, setWalletAddress] = useState<string | null>(null);
-  const [balance, setBalance] = useState<string>("");
+  const { connect, openView, disconnect, isWalletConnected, status, address, getRpcEndpoint, chain } = useChain("coreum-testnet");
+  const [logs, setLogs] = useState<string[]>([]);
+  const [balance, setBalance] = useState<string>("N/A");
 
-  const { connect, disconnect, getOfflineSignerAmino, address, isWalletConnected } = useChain("coreum-testnet");
+  const log = (msg: string) => setLogs((prev) => [`🔹 ${msg}`, ...prev]);
 
-  const fetchBalance = async (addr: string) => {
-    try {
-      const api = await client?.getBalance(addr, "utestcore");
-      if (api) {
-        const human = Number(api.amount) / 1_000_000;
-        setBalance(human.toFixed(6));
-        appendLog(`💰 Balance: ${human.toFixed(6)} testCORE`);
-      }
-    } catch (err) {
-      appendLog(`❌ Error fetching balance`);
-    }
-  };
-
-  const handleConnect = async () => {
-    appendLog("🔍 Connecting to wallet...");
-    try {
-      await connect();
-      const signer = await getOfflineSignerAmino();
-      const wallet = await signer.getAccounts();
-      const addr = wallet[0].address;
-      setWalletAddress(addr);
-      appendLog(`🔑 Connected: ${addr}`);
-
-      const registry = new Registry();
-      registry.register("/coreum.asset.ft.v1.MsgIssue", MsgIssue);
-
-      const stargate = await SigningStargateClient.connectWithSigner(
-        "https://rpc.testnet-1.coreum.dev:26657",
-        signer,
-        { registry }
-      );
-
-      setClient(stargate);
-      fetchBalance(addr);
-    } catch (err) {
-      appendLog("❌ Error: " + (err as Error).message);
-    }
+  const fetchBalance = async (client: SigningStargateClient, addr: string) => {
+    const balanceResult = await client.getBalance(addr, "utestcore");
+    setBalance((+balanceResult.amount / 1_000_000).toFixed(6));
+    log(`Wallet balance: ${balanceResult.amount} utestcore`);
   };
 
   const handleMint = async () => {
-    if (!client || !walletAddress) return appendLog("❌ No wallet or client");
+    if (!address) return log("❌ No address available.");
 
-    const msg = {
-      typeUrl: "/coreum.asset.ft.v1.MsgIssue",
-      value: {
-        issuer: walletAddress,
-        symbol: "DEMOLOG",
-        subunit: "udemolog",
-        precision: 6,
-        initialAmount: "5000000000",
-        description: "Minted via testnet log demo",
-        features: ["minting", "burning"],
-        burnRate: "0.00",
-        sendCommissionRate: "0.00",
-      },
+    log("⛓ Preparing to mint token...");
+    const rpc = await getRpcEndpoint();
+    const gasPrice = GasPrice.fromString("0.025utestcore");
+    const client = await SigningStargateClient.connectWithSigner(rpc, chain.signer!, { gasPrice });
+
+    MINT_MSG.value.issuer = address;
+
+    const fee = {
+      amount: [{ denom: "utestcore", amount: "2500" }],
+      gas: "200000",
     };
 
-    appendLog("🧾 MsgIssue payload constructed");
-    appendLog("✍️ Signing transaction...");
-    try {
-      const fee = {
-        amount: [{ denom: "utestcore", amount: "5000" }],
-        gas: "200000",
-      };
+    log(`🧾 Mint message: ${JSON.stringify(MINT_MSG, null, 2)}`);
 
-      const result = await client.signAndBroadcast(walletAddress, [msg], fee);
+    try {
+      const result = await client.signAndBroadcast(address, [MINT_MSG], fee);
       if (result.code === 0) {
-        appendLog(`✅ Minted! Tx hash: ${result.transactionHash}`);
+        log(`✅ Mint success! TX Hash: ${result.transactionHash}`);
       } else {
-        appendLog(`❌ Broadcast failed: ${result.rawLog}`);
+        log(`❌ Mint failed! Code: ${result.code} - Log: ${result.rawLog}`);
       }
-    } catch (err) {
-      appendLog(`❌ Broadcast error: ${(err as Error).message}`);
+    } catch (err: any) {
+      log(`🔥 Exception during mint: ${err.message}`);
     }
   };
 
+  useEffect(() => {
+    const bootstrap = async () => {
+      log("📡 DApp Initialized.");
+      if (typeof window !== "undefined" && window.keplr) {
+        log("🧠 Keplr detected.");
+      } else {
+        log("⚠️ Keplr not detected.");
+      }
+
+      if (status === "Connected" && address) {
+        log(`🔌 Connected to ${COREUM?.pretty_name}`);
+        log(`👤 Address: ${address}`);
+        const rpc = await getRpcEndpoint();
+        const client = await SigningStargateClient.connectWithSigner(rpc, chain.signer!);
+        await fetchBalance(client, address);
+      } else {
+        log(`🔌 Wallet not connected. Status: ${status}`);
+      }
+    };
+    bootstrap();
+  }, [status, address]);
+
   return (
-    <div style={{ fontFamily: "monospace", padding: "20px", color: "#0f0", backgroundColor: "#000", minHeight: "100vh" }}>
-      <h1>🧪 Mint Smart Token (Testnet Log Dashboard)</h1>
-      <button onClick={handleConnect} style={{ marginRight: "10px" }}>🔌 Connect Wallet</button>
-      <button onClick={handleMint}>🪙 Mint Token</button>
-      <div style={{ marginTop: "20px", backgroundColor: "#111", padding: "15px", borderRadius: "8px", height: "400px", overflowY: "auto" }} id="log">
-        <div>> 🔥 Coreum Testnet Log Console</div>
+    <div style={{ padding: 24, fontFamily: "monospace", background: "#111", color: "#0f0", minHeight: "100vh" }}>
+      <h1>Mint SoloPass Token <span style={{ color: "#0ff" }}>(Live Log)</span></h1>
+      <p>Status: <strong>{status}</strong></p>
+      <p>Address: {address || "Not connected"}</p>
+      <p>Balance: {balance} CORE</p>
+      <button onClick={() => (isWalletConnected ? handleMint() : connect())} style={{ padding: "10px 20px", marginBottom: 12 }}>
+        {isWalletConnected ? "Mint Token" : "Connect Wallet"}
+      </button>
+      <button onClick={() => openView()} style={{ padding: "6px 12px", marginLeft: 8 }}>
+        Open Wallet View
+      </button>
+      <div style={{ marginTop: 20 }}>
+        <h2>📝 Logs</h2>
+        <div style={{ whiteSpace: "pre-wrap", maxHeight: "60vh", overflowY: "scroll", background: "#000", padding: "10px", border: "1px solid #333" }}>
+          {logs.map((l, i) => <div key={i}>{l}</div>)}
+        </div>
       </div>
     </div>
   );
